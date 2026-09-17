@@ -120,7 +120,7 @@ export function apply(ctx: Context) {
   ctx.tools.register(defineTool({
     name: 'search_memes',
     description:
-      'Search Memegen.link for real meme templates that match a conversation scenario and the user intent. Use this tool before recommending a meme.',
+      'Search Memegen.link for real meme templates that match a conversation scenario and the user intent. Use this tool before recommending a meme, then show the returned candidate image previews in the final response.',
     parameters: {
       query: {
         type: 'string',
@@ -151,9 +151,23 @@ export function apply(ctx: Context) {
           },
         },
       },
-      render: (_args, value) => [
-        { type: 'text', text: JSON.stringify(value, null, 2) },
-      ],
+      render: (_args, value) => [{
+        type: 'text',
+        text: value.length === 0
+          ? 'No matching meme templates were found.'
+          : [
+              'Matching meme templates:',
+              '',
+              ...value.flatMap((meme) => [
+                `### ${meme.name}`,
+                `Template ID: \`${meme.id}\``,
+                `![${meme.name}](${meme.imageUrl})`,
+                `Keywords: ${meme.keywords.join(', ') || 'none'}`,
+                '',
+              ]),
+              'Show these candidate image previews to the user and use the selected template ID when calling generate_meme.',
+            ].join('\n'),
+      }],
     },
     async execute(args) {
       // Fetch the live template catalog instead of relying on a local mock list.
@@ -226,9 +240,21 @@ export function apply(ctx: Context) {
           imageUrl: { type: 'string' },
         },
       },
-      render: (_args, value) => [
-        { type: 'text', text: JSON.stringify(value, null, 2) },
-      ],
+      render: (_args, value) => [{
+        type: 'text',
+        text: [
+          'Generated meme:',
+          '',
+          `Template ID: \`${value.templateId}\``,
+          `Caption: ${value.text.join(' / ')}`,
+          '',
+          `![Generated meme](${value.imageUrl})`,
+          '',
+          `Image URL: ${value.imageUrl}`,
+          '',
+          'Show the generated meme image to the user in the final response.',
+        ].join('\n'),
+      }],
     },
     async execute(args) {
       const templateId = args.templateId.trim()
