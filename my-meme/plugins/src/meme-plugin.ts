@@ -5,6 +5,7 @@ export const name = 'meme-tools'
 export const inject = ['tools']
 
 const MEMEGEN_TEMPLATES_URL = 'https://api.memegen.link/templates/'
+const MEMEGEN_IMAGES_URL = 'https://api.memegen.link/images/'
 const MAX_RESULTS = 10
 // Common words add noise to token matching without describing a meme concept.
 const STOP_WORDS = new Set([
@@ -19,6 +20,10 @@ interface MemegenTemplate {
   keywords: string[]
 }
 
+interface MemegenImage {
+  url: string
+}
+
 function isMemegenTemplate(value: unknown): value is MemegenTemplate {
   // Treat API data as untrusted and keep only templates with the fields the tool uses.
   if (typeof value !== 'object' || value === null) return false
@@ -29,6 +34,12 @@ function isMemegenTemplate(value: unknown): value is MemegenTemplate {
     && typeof template.blank === 'string'
     && Array.isArray(template.keywords)
     && template.keywords.every((keyword) => typeof keyword === 'string')
+}
+
+function isMemegenImage(value: unknown): value is MemegenImage {
+  if (typeof value !== 'object' || value === null) return false
+
+  return typeof (value as Record<string, unknown>).url === 'string'
 }
 
 function normalize(value: string) {
@@ -181,6 +192,79 @@ export function apply(ctx: Context) {
           imageUrl: template.blank,
           keywords: template.keywords,
         }))
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'generate_meme',
+    description:
+      'Generate a meme image from a Memegen template and caption text. Use a template ID returned by search_memes, then provide the text lines in display order.',
+    parameters: {
+      templateId: {
+        type: 'string',
+        required: true,
+        description: 'The Memegen template ID selected from search_memes results.',
+      },
+      text: {
+        type: 'array',
+        required: true,
+        description:
+          'Caption lines to render in order. Most templates use a top line followed by a bottom line.',
+        items: { type: 'string' },
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          templateId: { type: 'string' },
+          text: {
+            type: 'array',
+            items: { type: 'string' },
+          },
+          imageUrl: { type: 'string' },
+        },
+      },
+      render: (_args, value) => [
+        { type: 'text', text: JSON.stringify(value, null, 2) },
+      ],
+    },
+    async execute(args) {
+      const templateId = args.templateId.trim()
+      const text = args.text.map((line) => line.trim())
+      if (!templateId) throw new Error('A non-empty Memegen template ID is required')
+      if (text.length === 0 || text.every((line) => !line)) {
+        throw new Error('At least one non-empty meme caption line is required')
+      }
+
+      const response = await fetch(MEMEGEN_IMAGES_URL, {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          template_id: templateId,
+          text,
+          extension: 'png',
+          redirect: false,
+        }),
+      })
+      if (!response.ok) {
+        throw new Error(`Memegen image request failed with status ${response.status}`)
+      }
+
+      const payload: unknown = await response.json()
+      if (!isMemegenImage(payload)) {
+        throw new Error('Memegen image response must contain a URL')
+      }
+
+      return {
+        templateId,
+        text,
+        imageUrl: payload.url,
+      }
     },
   }))
 }
