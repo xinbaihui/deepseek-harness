@@ -6,6 +6,7 @@ export const inject = ['tools']
 
 const MEMEGEN_TEMPLATES_URL = 'https://api.memegen.link/templates/'
 const MEMEGEN_IMAGES_URL = 'https://api.memegen.link/images/'
+const GIPHY_SEARCH_URL = 'https://api.giphy.com/v1/gifs/search'
 const MAX_RESULTS = 10
 // Common words add noise to token matching without describing a meme concept.
 const STOP_WORDS = new Set([
@@ -24,6 +25,16 @@ interface MemegenImage {
   url: string
 }
 
+interface GiphyItem {
+  id: string
+  title: string
+  images: {
+    original: { url: string }
+    fixed_width_small?: { url: string }
+    fixed_width?: { url: string }
+  }
+}
+
 function isMemegenTemplate(value: unknown): value is MemegenTemplate {
   // Treat API data as untrusted and keep only templates with the fields the tool uses.
   if (typeof value !== 'object' || value === null) return false
@@ -40,6 +51,23 @@ function isMemegenImage(value: unknown): value is MemegenImage {
   if (typeof value !== 'object' || value === null) return false
 
   return typeof (value as Record<string, unknown>).url === 'string'
+}
+
+function isGiphyItem(value: unknown): value is GiphyItem {
+  if (typeof value !== 'object' || value === null) return false
+
+  const item = value as Record<string, unknown>
+  if (typeof item.id !== 'string' || typeof item.title !== 'string') return false
+  if (typeof item.images !== 'object' || item.images === null) return false
+
+  const images = item.images as Record<string, unknown>
+  if (typeof images.original !== 'object' || images.original === null) return false
+  return typeof (images.original as Record<string, unknown>).url === 'string'
+}
+
+function renditionUrl(item: GiphyItem, rendition: 'fixed_width_small' | 'fixed_width') {
+  const candidate = item.images[rendition]
+  return candidate?.url || item.images.original.url
 }
 
 function normalize(value: string) {
@@ -103,21 +131,6 @@ function scoreTemplate(
 
 export function apply(ctx: Context) {
   ctx.tools.register(defineTool({
-    name: 'greet',
-    description: 'Greet someone by name.',
-    parameters: {
-      name: { type: 'string', required: true, description: 'The name to greet' },
-    },
-    output: {
-      schema: { type: 'string' },
-      render: (_args, value) => [{ type: 'text', text: value }],
-    },
-    async execute(args) {
-      return `Hello, ${args.name}!`
-    },
-  }))
-
-  ctx.tools.register(defineTool({
     name: 'search_memes',
     description:
       'Search Memegen.link for real meme templates that match a conversation scenario and the user intent. Use this tool before recommending a meme, then show the returned candidate image previews in the final response.',
@@ -156,17 +169,17 @@ export function apply(ctx: Context) {
         text: value.length === 0
           ? 'No matching meme templates were found.'
           : [
-              'Matching meme templates:',
+            'Matching meme templates:',
+            '',
+            ...value.flatMap((meme) => [
+              `### ${meme.name}`,
+              `Template ID: \`${meme.id}\``,
+              `![${meme.name}](${meme.imageUrl})`,
+              `Keywords: ${meme.keywords.join(', ') || 'none'}`,
               '',
-              ...value.flatMap((meme) => [
-                `### ${meme.name}`,
-                `Template ID: \`${meme.id}\``,
-                `![${meme.name}](${meme.imageUrl})`,
-                `Keywords: ${meme.keywords.join(', ') || 'none'}`,
-                '',
-              ]),
-              'Show these candidate image previews to the user and use the selected template ID when calling generate_meme.',
-            ].join('\n'),
+            ]),
+            'Show these candidate image previews to the user and use the selected template ID when calling generate_meme.',
+          ].join('\n'),
       }],
     },
     async execute(args) {
@@ -291,6 +304,103 @@ export function apply(ctx: Context) {
         text,
         imageUrl: payload.url,
       }
+    },
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'search_giphy',
+    // NOT responsible for:
+    // - deciding user intent
+    // - deciding whether GIPHY is the best source
+    // - generating memes
+    // - choosing the final best meme
+    description:
+      'Search existing GIPHY reaction GIFs and stickers for emotions, reactions, and conversation scenarios. Use this when an animated reaction is more suitable than generating a captioned meme. Normally call this tool once with the requested result limit. Present the returned previews directly and do not download or inspect the GIF files unless the user explicitly requests visual verification.',
+    parameters: {
+      query: {
+        type: 'string',
+        required: true,
+        description: 'The emotion, reaction, or conversation scenario to search for.',
+      },
+      limit: {
+        type: 'number',
+        description: 'Maximum number of results to return. Defaults to 5 and cannot exceed 50.',
+      },
+    },
+    output: {
+      schema: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            id: { type: 'string' },
+            title: { type: 'string' },
+            gifUrl: { type: 'string' },
+            previewUrl: { type: 'string' },
+            source: { type: 'string' },
+          },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: value.length === 0
+          ? 'GIPHY returned no matching reaction GIFs or stickers.'
+          : [
+            'Matching GIPHY reactions:',
+            '',
+            ...value.flatMap((result) => [
+              `### ${result.title || 'Untitled GIPHY result'}`,
+              `ID: \`${result.id}\``,
+              `![${result.title || 'GIPHY preview'}](${result.previewUrl})`,
+              `GIF URL: ${result.gifUrl}`,
+              '',
+            ]),
+          ].join('\n'),
+      }],
+    },
+    async execute(args) {
+      const apiKey = process.env.GIPHY_API_KEY?.trim()
+      if (!apiKey) {
+        throw new Error('GIPHY_API_KEY is required to use search_giphy')
+      }
+
+      const query = args.query.trim()
+      if (!query) throw new Error('A non-empty GIPHY search query is required')
+
+      const requestedLimit = args.limit === undefined ? 5 : Math.trunc(args.limit)
+      if (!Number.isFinite(requestedLimit) || requestedLimit < 1) {
+        throw new Error('GIPHY search limit must be a positive number')
+      }
+      const limit = Math.min(requestedLimit, 50)
+      const url = new URL(GIPHY_SEARCH_URL)
+      url.searchParams.set('api_key', apiKey)
+      url.searchParams.set('q', query)
+      url.searchParams.set('limit', String(limit))
+
+      const response = await fetch(url, { headers: { accept: 'application/json' } })
+      if (!response.ok) {
+        throw new Error(`GIPHY search request failed with status ${response.status}`)
+      }
+
+      const payload: unknown = await response.json()
+      if (typeof payload !== 'object' || payload === null) {
+        throw new Error('GIPHY search response must be an object')
+      }
+      const data = (payload as Record<string, unknown>).data
+      if (!Array.isArray(data)) {
+        throw new Error('GIPHY search response must contain a data array')
+      }
+
+      return data
+        .filter(isGiphyItem)
+        .map((item) => ({
+          id: item.id,
+          title: item.title,
+          gifUrl: item.images.original.url,
+          previewUrl: renditionUrl(item, 'fixed_width_small'),
+          source: 'giphy',
+        }))
     },
   }))
 }
