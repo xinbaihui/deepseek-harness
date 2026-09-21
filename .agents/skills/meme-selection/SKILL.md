@@ -29,10 +29,59 @@ Possible intents include:
 If the user's intent is ambiguous and materially affects the
 meme choice, ask the user for clarification.
 
-## Step 2: Decide the Request Type
+## Step 2: Choose Content Type and Source
 
-After understanding the user's intent, determine what kind of
-meme request the user is making.
+After understanding the user's intent, choose the content type and source
+that best fit the request.
+
+### Reaction GIF
+
+Prefer `search_giphy` when the user wants:
+
+- a reaction GIF or animated response
+- an existing visual reaction to an emotion or conversation
+- a quick reaction where custom caption text is unnecessary
+
+Examples:
+
+- "Find me a crying reaction GIF."
+- "Give me a shocked reaction."
+- "I need something animated for this."
+
+Expected source and tool path:
+
+`GIPHY` → `search_giphy`
+
+### Custom Meme
+
+Use Memegen when the user wants:
+
+- a classic meme template
+- custom caption text
+- a specific meme template
+- a meme generated for the user's conversation or scenario
+
+Examples:
+
+- "Find the This Is Fine template."
+- "Make a meme about this bug."
+- "Use One Does Not Simply with this caption."
+
+Follow Step 3 to choose the exact Memegen tool path.
+
+### Ambiguous Visual Requests
+
+If both a reaction GIF and a custom meme could reasonably satisfy the
+request, do not default to Memegen.
+
+- If the user's intent reliably indicates one content type, choose it.
+- Otherwise, ask whether the user prefers a reaction GIF or a
+  custom-captioned meme.
+
+## Step 3: Handle Memegen Requests
+
+After choosing Custom Meme in Step 2, determine the exact Memegen tool path
+for the user's request.
 
 ### Find an Existing Meme
 
@@ -74,10 +123,11 @@ Expected tool path:
 
 If the user explicitly specifies a meme template:
 
-- Do not search for another template.
-- Use the specified template directly with `generate_meme`.
-- Use `search_memes` only if the specified template cannot be
-  resolved or is unavailable.
+- If the exact valid `templateId` is known, use it directly with
+  `generate_meme`.
+- Do not infer or invent a `templateId` from the template name.
+- If the exact `templateId` is unknown, use `search_memes` to resolve it,
+  then call `generate_meme` with the resolved ID.
 
 Example:
 
@@ -86,4 +136,52 @@ Example:
 
 Expected tool path:
 
-`generate_meme`
+Known exact `templateId`: `generate_meme`
+
+Unknown exact `templateId`: `search_memes` → `generate_meme`
+
+## Step 4: Completion and Stop Conditions
+
+Stop when the user's requested result has been produced. Do not continue
+calling tools merely to gather more options or verify a successful result.
+
+### Reaction GIF Requests
+
+A reaction GIF request is complete when `search_giphy` returns enough
+relevant candidates to satisfy the user's requested count.
+
+- Present the returned candidates using their preview URLs.
+- Do not download, inspect, or visually verify the GIF files unless the
+  user explicitly asks for verification.
+- Do not call `search_giphy` again when the first result set is sufficient.
+- Do not call `search_memes` or `generate_meme` after a successful GIPHY
+  search unless the user asks to switch content type.
+
+If the search returns no useful candidates, refine the query and try once
+more. If the second search is still unsuccessful, explain that no suitable
+result was found and ask the user to refine the request.
+
+### Existing Meme or Template Requests
+
+An existing meme or template request is complete when `search_memes`
+returns suitable candidates.
+
+- Present the candidates and stop.
+- Do not call `generate_meme` unless the user asked to create or customize
+  a meme.
+
+If no suitable template is found, explain the limitation and ask the user
+for another concept or permission to use a different content source.
+
+### Custom Meme Requests
+
+A custom meme request is complete when `generate_meme` successfully returns
+the generated meme.
+
+- Present the generated image and stop.
+- Do not search for alternative templates or generate additional versions
+  unless the user asks for alternatives or revisions.
+
+If generation fails, report the failure clearly. Retry only when the error
+is likely temporary or can be corrected with known information; otherwise,
+ask the user how they want to proceed.
