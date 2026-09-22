@@ -29,6 +29,8 @@ Possible intents include:
 If the user's intent is ambiguous and materially affects the
 meme choice, ask the user for clarification.
 
+
+
 ## Step 2: Choose Content Type and Source
 
 After understanding the user's intent, choose the content type and source
@@ -71,12 +73,22 @@ Follow Step 3 to choose the exact Memegen tool path.
 
 ### Ambiguous Visual Requests
 
-If both a reaction GIF and a custom meme could reasonably satisfy the
-request, do not default to Memegen.
+If the user asks for something visual but does not specify whether they
+want a reaction GIF or a custom-captioned meme, treat the content type
+as materially ambiguous.
 
-- If the user's intent reliably indicates one content type, choose it.
-- Otherwise, ask whether the user prefers a reaction GIF or a
-  custom-captioned meme.
+You MUST ask the user to choose:
+- Reaction GIF
+- Custom-captioned meme
+- Both
+
+Do not call `search_giphy`, `search_memes`, or `generate_meme` before
+the user answers.
+
+Exception:
+If the user explicitly delegates the choice to you, for example
+"you choose what works best", choose the content type yourself and
+continue without asking.
 
 ## Step 3: Handle Memegen Requests
 
