@@ -8,18 +8,54 @@ My Meme evaluations test agent behavior, not only the final answer. The current 
 
 ```text
 cases.json prompt
-  -> human runs prompt in a new Harness session
+  -> run-suite.py starts an isolated Harness session
   -> agent produces a trajectory
-  -> human exports session JSONL
+  -> runner persists session JSONL
   -> behavior-evaluator.mjs reads tool/call events
   -> case result and suite summary
 ```
 
-This is a manual runner with an automated deterministic evaluator.
+## Component responsibilities
+
+The Python SDK is already used by both `sdk-smoke.py` and
+`evals/run-suite.py`. It is the control interface for DeepSeek Harness, not a
+replacement implementation of Harness and not merely a direct Model API
+client.
+
+```text
+run-suite.py
+  -> Harness Python SDK
+  -> starts and controls the DSH Runtime
+  -> creates an Agent Session and sends a prompt
+  -> DSH assembles instructions, Skill catalog, and Tools
+  -> DSH calls the DeepSeek Model
+  -> Model decides whether to answer or call a Tool
+  -> DSH executes Tools and continues the Agent Loop
+  -> Python SDK returns the final response and Session events
+  -> run-suite.py writes JSONL
+  -> behavior-evaluator.mjs checks deterministic behavior rules
+```
+
+The components have separate responsibilities:
+
+| Component | Responsibility |
+|---|---|
+| Python Runner (`run-suite.py`) | Reads cases, starts isolated sessions, supplies the E5 follow-up, saves JSONL, and starts the evaluator. |
+| Harness Python SDK | Starts and controls a DSH Runtime from Python, sends prompts to sessions, and returns responses, events, and notifications. |
+| DSH Runtime | Assembles the Agent, context, Skills, and Tools and drives the Model → Tool → Result → Model loop. |
+| DeepSeek Model | Understands the request, reasons about the next action, selects Tools, and produces the response. |
+| My Meme Tools | Perform the business actions: search Memegen, generate a meme, or search GIPHY. |
+| Deterministic evaluator | Reads recorded Tool calls and decides whether execution satisfied the case rules. |
+
+A direct Model API call normally resembles `Python → Model → response`. The
+Harness SDK path is `Python → DSH Agent → Model → Tool → Model → response`.
+The SDK acts as the external controller or client; the Agent Loop itself still
+runs inside the DSH Runtime.
 
 ## E1–E5 behavior suite
 
-`evals/cases.json` is the behavior specification. Its prompts are currently human-executed test inputs.
+`evals/cases.json` is the behavior specification. The Python Runner executes
+its prompts automatically.
 
 | Case | Behavior under test | Deterministic expectation |
 |---|---|---|
@@ -27,7 +63,7 @@ This is a manual runner with an automated deterministic evaluator.
 | E2 | Find a crying reaction GIF. | Require `search_giphy`; forbid `search_memes` and `generate_meme`. |
 | E3 | Generate from the explicit template ID `fine`. | Require `generate_meme`; forbid both search tools. |
 | E4 | User delegates the content-type choice. | Forbid `ask_user_question`; do not constrain the valid route chosen. |
-| E5 | User asks for something visual without choosing GIF or meme. | Require `ask_user_question` before the first content tool. |
+| E5 | User asks for something visual without choosing GIF or meme. | Turn 1 must not call a content tool; the runner supplies a fixed static-meme choice; turn 2 must call `search_memes`. |
 
 E4 intentionally preserves agent autonomy. The evaluator enforces the product requirement—do not ask after delegation—without overfitting to one previously successful route.
 
@@ -39,15 +75,27 @@ E4 intentionally preserves agent autonomy. The evaluator enforces the product re
 [{ name, seq }, ...]
 ```
 
-It supports three constraints:
+It supports five constraints:
 
 - `requiredTools`: every named tool must appear.
 - `forbiddenTools`: none of the named tools may appear.
 - `requiredBefore`: a required tool must occur before the first matching target tool.
+- `requiredToolsInTurn`: every named tool must appear in the specified turn.
+- `forbiddenToolsInTurn`: none of the named tools may appear in the specified turn.
 
 The evaluator produces a reason for every PASS or FAIL and prints suite totals and pass rate. It uses event `seq`, not physical JSONL line numbers, to determine order.
 
-### Run
+### Run automatically
+
+```bash
+python my-meme/evals/run-suite.py
+```
+
+The runner reads `.env/keys.json` when the current process does not already
+provide `DEEPSEEK_API_KEY` and `GIPHY_API_KEY`. It creates independent sessions,
+writes `E1-session.jsonl` through `E5-session.jsonl`, and invokes the evaluator.
+
+### Evaluate existing JSONL files directly
 
 ```bash
 node evals/behavior-evaluator.mjs \
@@ -69,7 +117,7 @@ Exit codes:
 - The evaluator has been checked with known-good and known-bad E5 trajectories.
 - E5 initially passed 2 of 5 isolated manual runs.
 - After the Skill rule was strengthened with a condition, required action, forbidden pre-clarification actions, and a delegation exception, E5 passed 5 of 5 isolated runs.
-- The current E1–E5 manually exported suite has produced a 5/5 pass result.
+- The current automated E1–E5 SDK suite has produced a 5/5 pass result.
 
 These are small-sample development results, not a production reliability guarantee.
 
@@ -81,21 +129,7 @@ This smoke test is not the Automated Eval Runner. It verifies configuration avai
 
 ## Current limitations
 
-- A person must create an isolated session, enter each prompt, export JSONL, and map the file to its case ID.
-- The evaluator cannot verify that the exported session was created from the prompt recorded in `cases.json`.
 - Required tool presence does not prove tool success or a valid final artifact.
 - The suite does not score relevance, humor, tone, image quality, latency, cost, or repeated-run reliability automatically.
+- E5 deterministically checks the two-turn tool behavior, but does not judge whether the first assistant text is a high-quality clarification question.
 - Five distinct passing cases produce a suite pass rate; repeated executions of one case produce a reliability rate. These metrics must not be conflated.
-
-## Next step: Automated Eval Runner
-
-The next implementation should:
-
-1. Read each prompt from `evals/cases.json`.
-2. Create an isolated Harness session for each case.
-3. Launch the same Skill, tools, and execution configuration used by My Meme.
-4. Wait for the run to complete and collect the session events.
-5. Apply the existing deterministic constraints.
-6. Print per-case results and the suite summary.
-
-Do not redesign the case set or replace deterministic checks with an LLM judge during this step. Semantic quality evaluation can be added later when a concrete requirement cannot be judged from event facts.

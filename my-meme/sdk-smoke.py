@@ -15,6 +15,7 @@ from pathlib import Path
 # __file__ 是当前文件 sdk-smoke.py 的路径。
 # parents[1] 向上两层，得到 deepseek-harness 仓库根目录。
 REPO_ROOT = Path(__file__).resolve().parents[1]
+MY_MEME_ROOT = REPO_ROOT / "my-meme"
 
 # 本次 smoke test 使用的固定输入，以及期望出现的 Skill 和 Tool。
 PROMPT = "Find me a crying reaction GIF."
@@ -147,8 +148,10 @@ def run_smoke(output: Path, model: str) -> None:
     """真实运行 Agent，验证行为，并保存完整 Session JSONL。"""
     require_environment()
 
-    # 每次运行使用独立的临时 DSH_HOME，避免污染用户平时使用的 DSH 配置。
-    dsh_home = Path(tempfile.mkdtemp(prefix="my-meme-sdk-smoke-"))
+    # 每次运行创建唯一的项目内临时目录，退出时会整体删除。
+    run_temp = Path(tempfile.mkdtemp(prefix=".sdk-smoke-run-", dir=MY_MEME_ROOT))
+    dsh_home = run_temp / "dsh-home"
+    dsh_home.mkdir()
     runtime_entry = REPO_ROOT / "apps" / "cli" / "src" / "bin.ts"
 
     # 这个现有配置负责注册 search_memes、generate_meme、search_giphy。
@@ -178,6 +181,7 @@ def run_smoke(output: Path, model: str) -> None:
                 # 这里只补充 DSH 专用环境变量。
                 # DEEPSEEK_API_KEY 和 GIPHY_API_KEY 会从当前 Python 进程继承。
                 "DSH_HOME": str(dsh_home),
+                "TMPDIR": str(run_temp),
                 "DSH_PERMISSION_MODE": "danger-full-access",
                 "DSH_TELEMETRY_DISABLED": "1",
             },
@@ -213,8 +217,8 @@ def run_smoke(output: Path, model: str) -> None:
         print(f"PASS: session JSONL: {output}")
         print(f"final_response={result.final_response}")
     finally:
-        # 无论运行成功还是抛出异常，最终都删除隔离的临时 DSH_HOME。
-        shutil.rmtree(dsh_home)
+        # 无论成功还是抛出异常，都删除本次运行产生的全部临时文件。
+        shutil.rmtree(run_temp)
 
 
 def main() -> None:

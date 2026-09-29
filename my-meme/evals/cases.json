@@ -46,19 +46,27 @@
   },
   {
     "id": "E5",
-    "description": "Clarify ambiguous visual content type before taking a content action.",
+    "description": "Clarify an ambiguous visual request in turn 1, then search the selected static meme type in turn 2.",
     "prompt": "My colleague said \"this should be a simple change.\" I want to reply with something visual.",
     "requiredTools": [
-      "ask_user_question"
+      "search_memes"
     ],
     "forbiddenTools": [],
-    "requiredBefore": [
+    "forbiddenToolsInTurn": [
       {
-        "tool": "ask_user_question",
-        "before": [
+        "turn": 1,
+        "tools": [
           "search_memes",
           "search_giphy",
           "generate_meme"
+        ]
+      }
+    ],
+    "requiredToolsInTurn": [
+      {
+        "turn": 2,
+        "tools": [
+          "search_memes"
         ]
       }
     ]

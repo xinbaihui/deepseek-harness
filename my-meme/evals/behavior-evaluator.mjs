@@ -39,7 +39,14 @@ function parseToolCalls(jsonl, filePath) {
       )
     }
 
-    calls.push({ name: event.data.name, seq: event.seq })
+    const turn = event.data.turn
+    if (!Number.isSafeInteger(turn)) {
+      throw new Error(
+        `${filePath}:${index + 1}: tool/call is missing integer data.turn`,
+      )
+    }
+
+    calls.push({ name: event.data.name, seq: event.seq, turn })
   }
 
   return calls.sort((left, right) => left.seq - right.seq)
@@ -94,11 +101,53 @@ function evaluateRequiredBefore(requiredBefore, toolCalls) {
   return failures
 }
 
+function evaluateRequiredToolsInTurn(requiredToolsInTurn, toolCalls) {
+  const failures = []
+
+  for (const constraint of requiredToolsInTurn) {
+    const namesInTurn = new Set(
+      toolCalls
+        .filter((call) => call.turn === constraint.turn)
+        .map((call) => call.name),
+    )
+    const missing = constraint.tools.filter((tool) => !namesInTurn.has(tool))
+    if (missing.length > 0) {
+      failures.push(
+        `turn ${constraint.turn} missing required tool${missing.length === 1 ? '' : 's'}: ${missing.join(', ')}`,
+      )
+    }
+  }
+
+  return failures
+}
+
+function evaluateForbiddenToolsInTurn(forbiddenToolsInTurn, toolCalls) {
+  const failures = []
+
+  for (const constraint of forbiddenToolsInTurn) {
+    const namesInTurn = new Set(
+      toolCalls
+        .filter((call) => call.turn === constraint.turn)
+        .map((call) => call.name),
+    )
+    const present = constraint.tools.filter((tool) => namesInTurn.has(tool))
+    if (present.length > 0) {
+      failures.push(
+        `turn ${constraint.turn} called forbidden tool${present.length === 1 ? '' : 's'}: ${present.join(', ')}`,
+      )
+    }
+  }
+
+  return failures
+}
+
 function evaluateCase(evalCase, toolCalls) {
   const failures = [
     evaluateRequiredTools(evalCase.requiredTools, toolCalls),
     evaluateForbiddenTools(evalCase.forbiddenTools, toolCalls),
     ...evaluateRequiredBefore(evalCase.requiredBefore ?? [], toolCalls),
+    ...evaluateRequiredToolsInTurn(evalCase.requiredToolsInTurn ?? [], toolCalls),
+    ...evaluateForbiddenToolsInTurn(evalCase.forbiddenToolsInTurn ?? [], toolCalls),
   ].filter(Boolean)
 
   if (failures.length > 0) {
@@ -112,6 +161,12 @@ function evaluateCase(evalCase, toolCalls) {
       : null,
     evalCase.requiredBefore?.length > 0
       ? 'required tool order satisfied'
+      : null,
+    evalCase.requiredToolsInTurn?.length > 0
+      ? 'required per-turn tools present'
+      : null,
+    evalCase.forbiddenToolsInTurn?.length > 0
+      ? 'forbidden per-turn tools absent'
       : null,
   ].filter(Boolean)
 
