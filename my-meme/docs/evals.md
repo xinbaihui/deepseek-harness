@@ -95,6 +95,19 @@ The runner reads `.env/keys.json` when the current process does not already
 provide `DEEPSEEK_API_KEY` and `GIPHY_API_KEY`. It creates independent sessions,
 writes `E1-session.jsonl` through `E5-session.jsonl`, and invokes the evaluator.
 
+### Measure repeated-run reliability
+
+Run one selected case multiple times in isolated sessions:
+
+```bash
+python my-meme/evals/run-suite.py --case E5 --runs 5
+```
+
+This writes `E5-run-01-session.jsonl` through
+`E5-run-05-session.jsonl`. Each file is evaluated against the same E5 rules;
+the final pass rate is the small-sample reliability rate for E5, not the pass
+rate of five distinct behavior cases.
+
 ### Evaluate existing JSONL files directly
 
 ```bash
@@ -118,6 +131,9 @@ Exit codes:
 - E5 initially passed 2 of 5 isolated manual runs.
 - After the Skill rule was strengthened with a condition, required action, forbidden pre-clarification actions, and a delegation exception, E5 passed 5 of 5 isolated runs.
 - The current automated E1–E5 SDK suite has produced a 5/5 pass result.
+- The first automated E5 repeated-run sample passed 4/5 isolated runs (80%). The failed trajectory called `search_memes` in turn 1 before presenting its content-type clarification.
+- After moving a mandatory content-type gate before routing and explicitly forbidding preparatory candidate searches, the next E5 sample passed 5/5 isolated runs (100%).
+- A subsequent unchanged retry passed 4/5. Across the two post-change samples, E5 passed 9/10 (90%); the remaining failure again searched in turn 1 before clarification.
 
 These are small-sample development results, not a production reliability guarantee.
 

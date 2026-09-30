@@ -101,15 +101,15 @@ It should not ask when the request is sufficiently specific or the user explicit
 - Bounded retry and fallback behavior observed in trajectories.
 - Session-event-based behavior evaluation.
 - SDK composition smoke test for Skill and tool availability.
+- Automated isolated E1–E5 execution through the Harness Python SDK.
 
 ## Current limitations
 
 - No explicit task-state model or persistent memory.
-- No automatic execution of eval cases.
 - No semantic or visual-quality evaluator.
 - No RAG, MCP integration, or multi-agent architecture.
 - The current Cordis plugin configuration includes a local absolute plugin path and is not yet portable across machines.
 
 ## Next step
 
-Implement an Automated Eval Runner that launches isolated sessions with the production-equivalent My Meme configuration, executes prompts from `evals/cases.json`, captures session events, and sends them to the existing deterministic evaluator.
+Evaluate whether required Tool calls complete successfully and return the minimum normalized fields needed for a usable meme, GIF, or generated artifact. Keep semantic relevance and visual quality as separate later concerns.

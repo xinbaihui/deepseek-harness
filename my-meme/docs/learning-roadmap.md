@@ -20,24 +20,33 @@ Use My Meme to learn agent application engineering through small, observable exp
 | Evaluation | Completed | Expected agent behavior is expressed as testable cases. |
 | Deterministic Evaluator | Completed | Tool presence, absence, and ordering are checked from session events. |
 | Eval Suite | Completed | E1–E5 run through one evaluator and produce a suite summary. |
-| Automated Eval Runner | **Current next step** | SDK composition smoke test exists; end-to-end case execution is not yet automated. |
+| Automated Eval Runner | Completed | `run-suite.py` executes cases through isolated SDK sessions, saves JSONL, and invokes the existing evaluator. |
+| Repeated-run Reliability | Completed at development-sample level | E5 scored 4/5 before the gate change and 9/10 across two post-change samples; Skill guidance improved but did not guarantee compliance. |
+| Tool Result Validity | **Current next step** | Tool calls are checked, but successful and structurally valid Tool results are not yet evaluated. |
 
 ## Current next step
 
-Build the smallest end-to-end Automated Eval Runner:
+Evaluate Tool results and final artifact validity:
 
 ```text
-prompt -> isolated agent session -> trajectory -> evaluator -> report
+tool call -> tool result -> deterministic artifact checks -> report
 ```
 
 Success criteria:
 
-- prompts come from `evals/cases.json`;
-- every case receives an isolated session;
-- the SDK-launched agent matches the interactive My Meme composition;
-- the runner captures session events without manual export;
-- the existing deterministic evaluator remains the source of PASS/FAIL behavior rules;
-- the result preserves exit codes suitable for future CI use.
+- correlate each required Tool call with its recorded Tool result;
+- distinguish a successful result from a Tool error;
+- validate the minimum normalized fields required by each My Meme Tool;
+- keep semantic relevance and visual quality out of deterministic checks;
+- report behavior and result-validity failures separately when useful.
+
+Reliability experiment: E5 initially passed 4/5 isolated runs. The failed run
+loaded the Skill but called `search_memes` in turn 1 before clarification. A
+single-variable Skill change moved the mandatory gate before routing and made
+clear that preparatory candidate search is also forbidden. Two post-change
+five-run samples passed 5/5 and 4/5, for 9/10 (90%) combined. The repeated
+failure mode shows that a Skill instruction guides Model behavior but is not a
+deterministic enforcement boundary.
 
 ## Learning principles
 
@@ -63,12 +72,10 @@ MCP integration is not implemented. Revisit it when My Meme needs to consume too
 
 Multi-agent orchestration is not implemented. The current workflow is small enough for one agent with explicit Skills, Tools, and evaluations. Revisit multi-agent design only when independent roles or parallel work provide a measurable benefit.
 
-## Later, after the Automated Eval Runner
+## Later
 
 Possible follow-up work, in priority order and only when justified:
 
-1. Add automatic repeated-run reliability measurements for selected cases.
-2. Evaluate tool results and final artifact validity, not only tool calls.
-3. Add semantic relevance and tone evaluation where deterministic rules are insufficient.
-4. Track latency and external API cost.
-5. Introduce explicit task state if longer editing workflows make history reconstruction unreliable.
+1. Add semantic relevance and tone evaluation where deterministic rules are insufficient.
+2. Track latency and external API cost.
+3. Introduce explicit task state if longer editing workflows make history reconstruction unreliable.

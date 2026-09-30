@@ -36,6 +36,26 @@ meme choice, ask the user for clarification.
 After understanding the user's intent, choose the content type and source
 that best fit the request.
 
+### Mandatory Content-Type Gate
+
+Before calling any content tool, determine whether the user explicitly chose:
+
+- a reaction GIF
+- a custom-captioned or existing meme
+- both
+- or delegated the choice to you
+
+If none applies, stop before taking any content action. Ask the user to choose
+Reaction GIF, Custom-captioned meme, or Both, and wait for the answer in a
+later turn.
+
+Do not call `search_giphy`, `search_memes`, or `generate_meme` before the user
+answers. This prohibition includes searching merely to prepare examples,
+candidates, recommendations, or a more informed clarification question.
+
+If the user explicitly delegates the choice, for example "you choose what
+works best", choose the content type yourself and continue without asking.
+
 ### Reaction GIF
 
 Prefer `search_giphy` when the user wants:
@@ -77,18 +97,12 @@ If the user asks for something visual but does not specify whether they
 want a reaction GIF or a custom-captioned meme, treat the content type
 as materially ambiguous.
 
-You MUST ask the user to choose:
+Ask the user to choose:
 - Reaction GIF
 - Custom-captioned meme
 - Both
 
-Do not call `search_giphy`, `search_memes`, or `generate_meme` before
-the user answers.
-
-Exception:
-If the user explicitly delegates the choice to you, for example
-"you choose what works best", choose the content type yourself and
-continue without asking.
+Apply the Mandatory Content-Type Gate before doing anything else.
 
 ## Step 3: Handle Memegen Requests
 

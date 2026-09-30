@@ -22,31 +22,27 @@ This repository is also a learning project for agent application engineering. Th
   - `search_giphy`: searches GIPHY for reaction GIFs.
 - Agent behavior has been inspected through Harness trajectories.
 - A deterministic evaluator checks required tools, forbidden tools, and tool ordering.
-- The E1–E5 behavior suite has been run successfully against manually exported session JSONL files.
+- The Python SDK runner executes E1–E5 in isolated sessions, saves their JSONL trajectories, and invokes the deterministic evaluator.
+- The automated E1–E5 behavior suite has produced a 5/5 pass result.
+- The first E5 repeated-run sample passed 4/5 isolated runs (80%). After strengthening the Skill's mandatory content-type gate, two further samples passed 5/5 and 4/5, for a combined post-change result of 9/10 (90%).
 - `sdk-smoke.py` verifies that an SDK-launched Harness instance can load the Skill and all three tools.
 
 ### Current limitations
 
-- Eval prompts are still run manually in isolated Harness sessions.
-- Session JSONL is still exported and associated with cases manually.
 - The evaluator checks tool-call behavior, not meme relevance, tone, visual quality, or tool-result quality.
+- Repeated-run reliability measurements are a development signal, not a production guarantee.
 - The application relies on conversation history for short multi-turn edits; it has no explicit task-state store or long-term memory system.
 - RAG, MCP integration, and multi-agent orchestration are not implemented.
 
-### Next step
+### Current next step
 
-Build the Automated Eval Runner:
+Evaluate Tool results and final artifact validity, not only Tool selection:
 
 ```text
-cases.json prompt
-  -> isolated Harness session
-  -> My Meme agent execution
-  -> session events
-  -> deterministic evaluator
-  -> suite report
+tool call
+  -> tool result
+  -> validate returned artifact fields and success state
 ```
-
-The runner must use the same Skill, tools, and agent configuration as the interactive My Meme environment.
 
 ## Project layout
 
@@ -60,6 +56,7 @@ my-meme/
 ├── evals/
 │   ├── cases.json
 │   ├── behavior-evaluator.mjs
+│   ├── run-suite.py
 │   └── E*-session*.jsonl
 ├── plugins/
 │   ├── cordis.yml
@@ -73,21 +70,21 @@ The `meme-selection` Skill currently lives at the repository-level path `.agents
 
 - A working DeepSeek Harness checkout and runtime.
 - Node.js for the deterministic evaluator.
-- Python and the local Harness Python SDK for `sdk-smoke.py`.
+- Python and the local Harness Python SDK source for `sdk-smoke.py` and `run-suite.py`.
+- `DEEPSEEK_API_KEY` for live Agent execution.
 - `GIPHY_API_KEY` for live GIPHY search.
 - Network access for the Memegen and GIPHY APIs.
 
 ## Run the current eval suite
 
-After manually running each prompt in a separate session and exporting its JSONL log:
+```bash
+python my-meme/evals/run-suite.py
+```
+
+Run one selected case repeatedly:
 
 ```bash
-node evals/behavior-evaluator.mjs \
-  E1=evals/E1-session.jsonl \
-  E2=evals/E2-session.jsonl \
-  E3=evals/E3-session.jsonl \
-  E4=evals/E4-session.jsonl \
-  E5=evals/E5-session.jsonl
+python my-meme/evals/run-suite.py --case E5 --runs 5
 ```
 
 Exit codes:
